@@ -196,6 +196,21 @@ void RimeState::keyEvent(KeyEvent &event) {
         // IBUS_RELEASE_MASK
         intStates |= (1 << 30);
     }
+    if (!event.isRelease() && composeResult.empty() &&
+        !event.rawKey().states().testAny(
+            KeyStates{KeyState::Mod1, KeyState::CapsLock, KeyState::Shift,
+                      KeyState::Ctrl, KeyState::Super})) {
+        if (auto candidateList = ic->inputPanel().candidateList()) {
+            if (auto *rimeCandidateList =
+                    dynamic_cast<RimeCandidateList *>(candidateList.get());
+                rimeCandidateList &&
+                rimeCandidateList->selectOverlayCandidate(ic,
+                                                          event.rawKey().sym())) {
+                event.filterAndAccept();
+                return;
+            }
+        }
+    }
     if (!composeResult.empty()) {
         event.filterAndAccept();
         auto length = utf8::lengthValidated(composeResult);
@@ -255,6 +270,25 @@ void RimeState::selectCandidate(InputContext *inputContext, int idx,
         inputContext->commitString(commit.text);
         api->free_commit(&commit);
     }
+    updateUI(inputContext, false);
+}
+
+void RimeState::commitOverlayCandidate(InputContext *inputContext,
+                                       std::string_view text) {
+    if (text.empty()) {
+        return;
+    }
+    auto *api = engine_->api();
+    if (api->is_maintenance_mode()) {
+        return;
+    }
+    auto session = this->session();
+    if (!session) {
+        return;
+    }
+    api->clear_composition(session);
+    inputContext->commitString(std::string(text));
+    engine_->instance()->resetCompose(inputContext);
     updateUI(inputContext, false);
 }
 

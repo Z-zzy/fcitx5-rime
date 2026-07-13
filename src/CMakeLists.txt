@@ -2,6 +2,7 @@ set(RIME_SOURCES
     rimestate.cpp
     rimeengine.cpp
     rimecandidate.cpp
+    overlaymenu.cpp
     rimesession.cpp
     rimeaction.cpp
     rimefactory.cpp
@@ -31,4 +32,3 @@ configure_file(rime-addon.conf.in.in rime-addon.conf.in)
 fcitx5_translate_desktop_file("${CMAKE_CURRENT_BINARY_DIR}/rime-addon.conf.in" rime-addon.conf)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/rime.conf" DESTINATION "${FCITX_INSTALL_PKGDATADIR}/inputmethod" COMPONENT config)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/rime-addon.conf" RENAME rime.conf DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon" COMPONENT config)
-

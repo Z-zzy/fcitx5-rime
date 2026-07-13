@@ -6,6 +6,7 @@
 
 #include "rimecandidate.h"
 #include "rimeengine.h"
+#include <algorithm>
 #include <cstring>
 #include <fcitx-utils/log.h>
 #include <fcitx/candidatelist.h>
@@ -59,6 +60,31 @@ void RimeGlobalCandidateWord::forget(RimeState *state) const {
 #endif
 }
 
+OverlayCandidateWord::OverlayCandidateWord(RimeEngine *engine,
+                                           const OverlayMenuEntry &entry)
+    : engine_(engine), kind_(entry.kind), baseIndex_(entry.baseIndex) {
+    setText(Text{entry.text});
+    if (kind_ == OverlayEntryKind::Local) {
+        setComment(Text{"本地纠错"});
+    } else if (kind_ == OverlayEntryKind::AiSuggestion) {
+        setComment(Text{"AI 建议"});
+    }
+}
+
+void OverlayCandidateWord::select(InputContext *inputContext) const {
+    if (kind_ == OverlayEntryKind::AiSlot) {
+        return;
+    }
+    if (auto *state = engine_->state(inputContext)) {
+        if (baseIndex_) {
+            state->selectCandidate(inputContext, *baseIndex_,
+                                   /*global=*/false);
+        } else {
+            state->commitOverlayCandidate(inputContext, text().toString());
+        }
+    }
+}
+
 RimeCandidateList::RimeCandidateList(RimeEngine *engine, InputContext *ic,
                                      const RimeContext &context)
     : engine_(engine), ic_(ic), hasPrev_(context.menu.page_no != 0),
@@ -76,13 +102,67 @@ RimeCandidateList::RimeCandidateList(RimeEngine *engine, InputContext *ic,
     bool has_label = RIME_STRUCT_HAS_MEMBER(context, context.select_labels) &&
                      context.select_labels;
 
-    int i;
-    for (i = 0; i < menu.num_candidates; ++i) {
+    auto *state = engine_->state(ic);
+    const bool overlayEnabled =
+        *engine_->config().aiOverlayEnabled && state &&
+        state->currentSchema() == *engine_->config().aiOverlaySchema;
+
+    if (!overlayEnabled) {
+        int i;
+        for (i = 0; i < menu.num_candidates; ++i) {
+            KeySym sym = FcitxKey_None;
+            std::string label;
+            if (i < menu.page_size && has_label) {
+                label = context.select_labels[i];
+            } else if (i < num_select_keys) {
+                label = std::string(1, menu.select_keys[i]);
+            } else {
+                label = std::to_string((i + 1) % 10);
+            }
+            label.append(" ");
+            labels_.emplace_back(label);
+
+            if (i < num_select_keys) {
+                sym = static_cast<KeySym>(menu.select_keys[i]);
+            } else {
+                sym = static_cast<KeySym>('0' + (i + 1) % 10);
+            }
+            candidateWords_.emplace_back(std::make_unique<RimeCandidateWord>(
+                engine, menu.candidates[i], sym, i));
+
+            if (i == menu.highlighted_candidate_index) {
+                cursor_ = i;
+            }
+        }
+        return;
+    }
+
+    OverlayMenuInput overlayInput;
+    for (int i = 0; i < menu.num_candidates; ++i) {
+        overlayInput.baseCandidates.push_back(
+            {menu.candidates[i].text ? menu.candidates[i].text : "", i});
+    }
+    const auto &demoLocalCandidate =
+        *engine_->config().aiOverlayDemoLocalCandidate;
+    if (!demoLocalCandidate.empty()) {
+        const auto iter = std::find_if(
+            overlayInput.baseCandidates.begin(), overlayInput.baseCandidates.end(),
+            [&demoLocalCandidate](const OverlayCandidate &candidate) {
+                return candidate.text == demoLocalCandidate;
+            });
+        overlayInput.localCandidate =
+            OverlayCandidate{demoLocalCandidate,
+                             iter == overlayInput.baseCandidates.end()
+                                 ? std::nullopt
+                                 : iter->baseIndex};
+    }
+    overlayInput.aiSlot = {AiSlotState::Loading, "AI 纠错中", std::nullopt};
+
+    const auto overlayEntries = OverlayMenu::compose(overlayInput);
+    for (size_t i = 0; i < overlayEntries.size(); ++i) {
         KeySym sym = FcitxKey_None;
         std::string label;
-        if (i < menu.page_size && has_label) {
-            label = context.select_labels[i];
-        } else if (i < num_select_keys) {
+        if (i < static_cast<size_t>(num_select_keys)) {
             label = std::string(1, menu.select_keys[i]);
         } else {
             label = std::to_string((i + 1) % 10);
@@ -90,18 +170,39 @@ RimeCandidateList::RimeCandidateList(RimeEngine *engine, InputContext *ic,
         label.append(" ");
         labels_.emplace_back(label);
 
-        if (i < num_select_keys) {
+        if (i < static_cast<size_t>(num_select_keys)) {
             sym = static_cast<KeySym>(menu.select_keys[i]);
         } else {
             sym = static_cast<KeySym>('0' + (i + 1) % 10);
         }
-        candidateWords_.emplace_back(std::make_unique<RimeCandidateWord>(
-            engine, menu.candidates[i], sym, i));
+        overlaySelectKeys_.push_back(sym);
 
-        if (i == menu.highlighted_candidate_index) {
-            cursor_ = i;
+        const auto &entry = overlayEntries[i];
+        if (entry.kind == OverlayEntryKind::Base && entry.baseIndex) {
+            candidateWords_.emplace_back(std::make_unique<RimeCandidateWord>(
+                engine, menu.candidates[*entry.baseIndex], sym,
+                *entry.baseIndex));
+        } else {
+            candidateWords_.emplace_back(
+                std::make_unique<OverlayCandidateWord>(engine, entry));
+        }
+
+        if (entry.baseIndex &&
+            *entry.baseIndex == menu.highlighted_candidate_index) {
+            cursor_ = static_cast<int>(i);
         }
     }
+}
+
+bool RimeCandidateList::selectOverlayCandidate(InputContext *inputContext,
+                                                KeySym sym) const {
+    for (size_t index = 0; index < overlaySelectKeys_.size(); ++index) {
+        if (overlaySelectKeys_[index] == sym) {
+            candidateWords_[index]->select(inputContext);
+            return true;
+        }
+    }
+    return false;
 }
 
 const CandidateWord &RimeCandidateList::candidateFromAll(int idx) const {

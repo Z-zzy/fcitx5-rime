@@ -6,6 +6,7 @@
 #ifndef _FCITX_RIMECANDIDATE_H_
 #define _FCITX_RIMECANDIDATE_H_
 
+#include "overlaymenu.h"
 #include "rimeengine.h"
 #include "rimestate.h"
 #include <fcitx/candidateaction.h>
@@ -41,6 +42,18 @@ public:
 private:
     RimeEngine *engine_;
     int idx_;
+};
+
+class OverlayCandidateWord : public CandidateWord {
+public:
+    OverlayCandidateWord(RimeEngine *engine, const OverlayMenuEntry &entry);
+
+    void select(InputContext *inputContext) const override;
+
+private:
+    RimeEngine *engine_;
+    OverlayEntryKind kind_;
+    std::optional<int> baseIndex_;
 };
 
 class RimeCandidateList final : public CandidateList,
@@ -100,6 +113,7 @@ public:
     std::vector<CandidateAction>
     candidateActions(const CandidateWord &candidate) const override;
     void triggerAction(const CandidateWord &candidate, int id) override;
+    bool selectOverlayCandidate(InputContext *inputContext, KeySym sym) const;
 
 private:
     void checkIndex(int idx) const {
@@ -117,6 +131,7 @@ private:
     int cursor_ = -1;
 
     std::vector<std::unique_ptr<CandidateWord>> candidateWords_;
+    std::vector<KeySym> overlaySelectKeys_;
 
     mutable size_t maxSize_ = std::numeric_limits<size_t>::max();
     mutable std::vector<std::unique_ptr<RimeGlobalCandidateWord>>

@@ -10,6 +10,7 @@ include(FeatureSummary)
 include(GNUInstallDirs)
 include(ECMSetupVersion)
 include(ECMUninstallTarget)
+include(CTest)
 
 find_package(Gettext REQUIRED)
 find_package(Fcitx5Core ${REQUIRED_FCITX_VERSION} REQUIRED)
@@ -47,6 +48,9 @@ include("${FCITX_INSTALL_CMAKECONFIG_DIR}/Fcitx5Utils/Fcitx5CompilerSettings.cma
 add_subdirectory(po)
 add_subdirectory(src)
 add_subdirectory(data)
+if(BUILD_TESTING)
+  add_subdirectory(test)
+endif()
 
 fcitx5_translate_desktop_file(org.fcitx.Fcitx5.Addon.Rime.metainfo.xml.in
                               org.fcitx.Fcitx5.Addon.Rime.metainfo.xml XML)
@@ -54,4 +58,3 @@ fcitx5_translate_desktop_file(org.fcitx.Fcitx5.Addon.Rime.metainfo.xml.in
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.fcitx.Fcitx5.Addon.Rime.metainfo.xml" DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
-

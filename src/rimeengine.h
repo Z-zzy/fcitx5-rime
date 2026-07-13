@@ -111,7 +111,15 @@ FCITX_CONFIGURATION(
         isApple() ? fcitx::KeyList{fcitx::Key("Control+Alt+grave")}
                   : fcitx::KeyList{}};
     fcitx::Option<fcitx::KeyList> synchronize{
-        this, "Synchronize", _("Synchronize"), {}};);
+        this, "Synchronize", _("Synchronize"), {}};
+    Option<bool> aiOverlayEnabled{this, "AiOverlayEnabled",
+                                  _("Enable AI candidate overlay"), false};
+    Option<std::string> aiOverlaySchema{this, "AiOverlaySchema",
+                                        _("AI overlay schema"),
+                                        "rime_ice_ai_test"};
+    Option<std::string> aiOverlayDemoLocalCandidate{
+        this, "AiOverlayDemoLocalCandidate",
+        _("AI overlay demo local candidate"), ""};);
 
 class RimeEngine final : public InputMethodEngineV2 {
 public:

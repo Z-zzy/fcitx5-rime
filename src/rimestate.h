@@ -34,6 +34,8 @@ public:
     void activate();
     void keyEvent(KeyEvent &event);
     void selectCandidate(InputContext *inputContext, int idx, bool global);
+    void commitOverlayCandidate(InputContext *inputContext,
+                                std::string_view text);
 #ifndef FCITX_RIME_NO_DELETE_CANDIDATE
     void deleteCandidate(int idx, bool global);
 #endif
