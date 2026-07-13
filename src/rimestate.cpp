@@ -204,8 +204,8 @@ void RimeState::keyEvent(KeyEvent &event) {
             if (auto *rimeCandidateList =
                     dynamic_cast<RimeCandidateList *>(candidateList.get());
                 rimeCandidateList &&
-                rimeCandidateList->selectOverlayCandidate(ic,
-                                                          event.rawKey().sym())) {
+                rimeCandidateList->selectOverlayCandidate(
+                    ic, event.rawKey().sym())) {
                 event.filterAndAccept();
                 return;
             }
@@ -274,8 +274,11 @@ void RimeState::selectCandidate(InputContext *inputContext, int idx,
 }
 
 void RimeState::commitOverlayCandidate(InputContext *inputContext,
-                                       std::string_view text) {
-    if (text.empty()) {
+                                       std::string_view text,
+                                       OverlayCandidateSource source) {
+    if (inputContext != &ic_ || text.empty() ||
+        !engine_->aiOverlayEnabled() ||
+        currentSchema() != *engine_->config().aiOverlaySchema) {
         return;
     }
     auto *api = engine_->api();
@@ -286,6 +289,17 @@ void RimeState::commitOverlayCandidate(InputContext *inputContext,
     if (!session) {
         return;
     }
+    const auto *rawInput = api->get_input(session);
+    if (!rawInput || !rawInput[0]) {
+        return;
+    }
+    switch (source) {
+    case OverlayCandidateSource::Local:
+    case OverlayCandidateSource::Ai:
+        break;
+    }
+    // A direct local or AI candidate has no Rime index. Keep its lifecycle
+    // here so the candidate UI cannot commit text without clearing composition.
     api->clear_composition(session);
     inputContext->commitString(std::string(text));
     engine_->instance()->resetCompose(inputContext);

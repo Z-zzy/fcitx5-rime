@@ -16,6 +16,33 @@
 
 namespace fcitx::rime {
 
+namespace {
+
+struct SelectionKey {
+    std::string label;
+    KeySym sym;
+};
+
+SelectionKey selectionKeyForIndex(const RimeContext &context,
+                                  int numSelectKeys, bool hasLabel,
+                                  size_t index) {
+    const auto &menu = context.menu;
+    if (index < static_cast<size_t>(menu.page_size) && hasLabel) {
+        return {context.select_labels[index],
+                index < static_cast<size_t>(numSelectKeys)
+                    ? static_cast<KeySym>(menu.select_keys[index])
+                    : static_cast<KeySym>('0' + (index + 1) % 10)};
+    }
+    if (index < static_cast<size_t>(numSelectKeys)) {
+        return {std::string(1, menu.select_keys[index]),
+                static_cast<KeySym>(menu.select_keys[index])};
+    }
+    const auto number = (index + 1) % 10;
+    return {std::to_string(number), static_cast<KeySym>('0' + number)};
+}
+
+} // namespace
+
 RimeCandidateWord::RimeCandidateWord(RimeEngine *engine,
                                      const RimeCandidate &candidate, KeySym sym,
                                      int idx)
@@ -80,7 +107,11 @@ void OverlayCandidateWord::select(InputContext *inputContext) const {
             state->selectCandidate(inputContext, *baseIndex_,
                                    /*global=*/false);
         } else {
-            state->commitOverlayCandidate(inputContext, text().toString());
+            const auto source = kind_ == OverlayEntryKind::AiSuggestion
+                                    ? OverlayCandidateSource::Ai
+                                    : OverlayCandidateSource::Local;
+            state->commitOverlayCandidate(inputContext, text().toString(),
+                                          source);
         }
     }
 }
@@ -104,31 +135,18 @@ RimeCandidateList::RimeCandidateList(RimeEngine *engine, InputContext *ic,
 
     auto *state = engine_->state(ic);
     const bool overlayEnabled =
-        *engine_->config().aiOverlayEnabled && state &&
+        engine_->aiOverlayEnabled() && state &&
         state->currentSchema() == *engine_->config().aiOverlaySchema;
 
     if (!overlayEnabled) {
         int i;
         for (i = 0; i < menu.num_candidates; ++i) {
-            KeySym sym = FcitxKey_None;
-            std::string label;
-            if (i < menu.page_size && has_label) {
-                label = context.select_labels[i];
-            } else if (i < num_select_keys) {
-                label = std::string(1, menu.select_keys[i]);
-            } else {
-                label = std::to_string((i + 1) % 10);
-            }
-            label.append(" ");
-            labels_.emplace_back(label);
-
-            if (i < num_select_keys) {
-                sym = static_cast<KeySym>(menu.select_keys[i]);
-            } else {
-                sym = static_cast<KeySym>('0' + (i + 1) % 10);
-            }
+            auto selection = selectionKeyForIndex(
+                context, num_select_keys, has_label, static_cast<size_t>(i));
+            selection.label.append(" ");
+            labels_.emplace_back(selection.label);
             candidateWords_.emplace_back(std::make_unique<RimeCandidateWord>(
-                engine, menu.candidates[i], sym, i));
+                engine, menu.candidates[i], selection.sym, i));
 
             if (i == menu.highlighted_candidate_index) {
                 cursor_ = i;
@@ -144,9 +162,15 @@ RimeCandidateList::RimeCandidateList(RimeEngine *engine, InputContext *ic,
     }
     const auto &demoLocalCandidate =
         *engine_->config().aiOverlayDemoLocalCandidate;
-    if (!demoLocalCandidate.empty()) {
+    const auto session = state->session(false);
+    const auto *rawInput =
+        session ? engine_->api()->get_input(session) : nullptr;
+    const bool matchesDemoInput =
+        rawInput && *engine_->config().aiOverlayDemoRawInput == rawInput;
+    if (!demoLocalCandidate.empty() && matchesDemoInput) {
         const auto iter = std::find_if(
-            overlayInput.baseCandidates.begin(), overlayInput.baseCandidates.end(),
+            overlayInput.baseCandidates.begin(),
+            overlayInput.baseCandidates.end(),
             [&demoLocalCandidate](const OverlayCandidate &candidate) {
                 return candidate.text == demoLocalCandidate;
             });
@@ -160,27 +184,16 @@ RimeCandidateList::RimeCandidateList(RimeEngine *engine, InputContext *ic,
 
     const auto overlayEntries = OverlayMenu::compose(overlayInput);
     for (size_t i = 0; i < overlayEntries.size(); ++i) {
-        KeySym sym = FcitxKey_None;
-        std::string label;
-        if (i < static_cast<size_t>(num_select_keys)) {
-            label = std::string(1, menu.select_keys[i]);
-        } else {
-            label = std::to_string((i + 1) % 10);
-        }
-        label.append(" ");
-        labels_.emplace_back(label);
-
-        if (i < static_cast<size_t>(num_select_keys)) {
-            sym = static_cast<KeySym>(menu.select_keys[i]);
-        } else {
-            sym = static_cast<KeySym>('0' + (i + 1) % 10);
-        }
-        overlaySelectKeys_.push_back(sym);
+        auto selection =
+            selectionKeyForIndex(context, num_select_keys, has_label, i);
+        selection.label.append(" ");
+        labels_.emplace_back(selection.label);
+        overlaySelectKeys_.push_back(selection.sym);
 
         const auto &entry = overlayEntries[i];
         if (entry.kind == OverlayEntryKind::Base && entry.baseIndex) {
             candidateWords_.emplace_back(std::make_unique<RimeCandidateWord>(
-                engine, menu.candidates[*entry.baseIndex], sym,
+                engine, menu.candidates[*entry.baseIndex], selection.sym,
                 *entry.baseIndex));
         } else {
             candidateWords_.emplace_back(
@@ -247,8 +260,11 @@ const CandidateWord &RimeCandidateList::candidateFromAll(int idx) const {
 
 int RimeCandidateList::totalSize() const { return -1; }
 
-bool RimeCandidateList::hasAction(const CandidateWord & /*candidate*/) const {
+bool RimeCandidateList::hasAction(const CandidateWord &candidate) const {
 #ifndef FCITX_RIME_NO_DELETE_CANDIDATE
+    if (dynamic_cast<const OverlayCandidateWord *>(&candidate)) {
+        return false;
+    }
     // We can always reset rime candidate's frequency.
     return true;
 #else
@@ -257,9 +273,12 @@ bool RimeCandidateList::hasAction(const CandidateWord & /*candidate*/) const {
 }
 
 std::vector<CandidateAction>
-RimeCandidateList::candidateActions(const CandidateWord & /*candidate*/) const {
+RimeCandidateList::candidateActions(const CandidateWord &candidate) const {
     std::vector<CandidateAction> actions;
 #ifndef FCITX_RIME_NO_DELETE_CANDIDATE
+    if (dynamic_cast<const OverlayCandidateWord *>(&candidate)) {
+        return actions;
+    }
     CandidateAction action;
     action.setId(0);
     action.setText(_("Forget word"));

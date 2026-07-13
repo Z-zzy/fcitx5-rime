@@ -24,6 +24,8 @@ namespace fcitx::rime {
 
 class RimeEngine;
 
+enum class OverlayCandidateSource { Local, Ai };
+
 class RimeState : public InputContextProperty {
 public:
     RimeState(RimeEngine *engine, InputContext &ic);
@@ -35,7 +37,8 @@ public:
     void keyEvent(KeyEvent &event);
     void selectCandidate(InputContext *inputContext, int idx, bool global);
     void commitOverlayCandidate(InputContext *inputContext,
-                                std::string_view text);
+                                std::string_view text,
+                                OverlayCandidateSource source);
 #ifndef FCITX_RIME_NO_DELETE_CANDIDATE
     void deleteCandidate(int idx, bool global);
 #endif

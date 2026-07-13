@@ -119,7 +119,10 @@ FCITX_CONFIGURATION(
                                         "rime_ice_ai_test"};
     Option<std::string> aiOverlayDemoLocalCandidate{
         this, "AiOverlayDemoLocalCandidate",
-        _("AI overlay demo local candidate"), ""};);
+        _("AI overlay demo local candidate"), ""};
+    Option<std::string> aiOverlayDemoRawInput{
+        this, "AiOverlayDemoRawInput", _("AI overlay demo raw input"),
+        "nenlgi"};);
 
 class RimeEngine final : public InputMethodEngineV2 {
 public:
@@ -154,6 +157,8 @@ public:
     std::string subModeLabelImpl(const InputMethodEntry & /*unused*/,
                                  InputContext & /*unused*/) override;
     const RimeEngineConfig &config() const { return config_; }
+    bool aiOverlayEnabled() const { return aiOverlayEnabled_; }
+    void toggleAiOverlay(InputContext *ic);
 
     rime_api_t *api() { return api_; }
     const auto &appOptions() const { return appOptions_; }
@@ -209,8 +214,10 @@ private:
     SimpleAction separatorAction_;
     SimpleAction deployAction_;
     SimpleAction syncAction_;
+    SimpleAction aiOverlayAction_;
 
     RimeEngineConfig config_;
+    bool aiOverlayEnabled_ = false;
     std::unordered_map<std::string, std::unordered_map<std::string, bool>>
         appOptions_;
 

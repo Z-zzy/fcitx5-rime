@@ -222,9 +222,18 @@ RimeEngine::RimeEngine(Instance *instance)
     });
     instance_->userInterfaceManager().registerAction("fcitx-rime-sync",
                                                      &syncAction_);
+
+    aiOverlayAction_.setCheckable(true);
+    aiOverlayAction_.setChecked(false);
+    aiOverlayAction_.setShortText(_("AI correction: off"));
+    aiOverlayAction_.connect<SimpleAction::Activated>(
+        [this](InputContext *ic) { toggleAiOverlay(ic); });
+    instance_->userInterfaceManager().registerAction("fcitx-rime-ai-overlay",
+                                                     &aiOverlayAction_);
     schemaMenu_.addAction(&separatorAction_);
     schemaMenu_.addAction(&deployAction_);
     schemaMenu_.addAction(&syncAction_);
+    schemaMenu_.addAction(&aiOverlayAction_);
     globalConfigReloadHandle_ = instance_->watchEvent(
         EventType::GlobalConfigReloaded, EventWatcherPhase::Default,
         [this](Event &) { refreshSessionPoolPolicy(); });
@@ -329,6 +338,10 @@ void RimeEngine::setSubConfig(const std::string &path,
 
 void RimeEngine::updateConfig() {
     RIME_DEBUG() << "Rime UpdateConfig";
+    aiOverlayEnabled_ = *config_.aiOverlayEnabled;
+    aiOverlayAction_.setChecked(aiOverlayEnabled_);
+    aiOverlayAction_.setShortText(aiOverlayEnabled_ ? _("AI correction: on")
+                                                    : _("AI correction: off"));
     if (constructed_ && factory_.registered()) {
         releaseAllSession(true);
     }
@@ -348,6 +361,18 @@ void RimeEngine::updateConfig() {
 
     if (constructed_) {
         refreshStatusArea(0);
+    }
+}
+
+void RimeEngine::toggleAiOverlay(InputContext *ic) {
+    aiOverlayEnabled_ = !aiOverlayEnabled_;
+    aiOverlayAction_.setChecked(aiOverlayEnabled_);
+    aiOverlayAction_.setShortText(aiOverlayEnabled_ ? _("AI correction: on")
+                                                    : _("AI correction: off"));
+    aiOverlayAction_.update(ic);
+    auto *state = this->state(ic);
+    if (state && ic->hasFocus()) {
+        state->updateUI(ic, false);
     }
 }
 

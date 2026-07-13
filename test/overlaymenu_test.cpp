@@ -52,7 +52,7 @@ void localCorrectionOccupiesSecondPositionAndLoadingSlotIsInert() {
     expect(menu.size() == 4,
            "expected the fixed AI slot to replace the final base candidate");
     expectEntry(menu[0], OverlayEntryKind::Base, "嫩里", true, 0);
-    expectEntry(menu[1], OverlayEntryKind::Local, "能力", true, -1);
+    expectEntry(menu[1], OverlayEntryKind::Local, "能力", true, 2);
     expectEntry(menu[2], OverlayEntryKind::AiSlot, "AI 纠错中", false, -1);
     expectEntry(menu[3], OverlayEntryKind::Base, "能理", true, 1);
 }
@@ -61,7 +61,7 @@ void aiSuggestionOccupiesThirdPositionAndPromotesExistingBaseCandidate() {
     OverlayMenuInput input{
         .baseCandidates = {{"嫩里", 0}, {"能理", 1}, {"能力", 2}, {"能量", 3}},
         .localCandidate = std::nullopt,
-        .aiSlot = AiSlot{AiSlotState::Suggestion, "能力", 2},
+        .aiSlot = AiSlot{AiSlotState::Suggestion, "能力", std::nullopt},
     };
 
     const auto menu = OverlayMenu::compose(input);
@@ -102,6 +102,22 @@ void promotedLocalCandidateRetainsItsOriginalRimeSelectionTarget() {
     expectEntry(menu[1], OverlayEntryKind::Local, "能力", true, 2);
 }
 
+void unrelatedDuplicateBaseCandidatesAreNotRemovedByTheAiSlot() {
+    OverlayMenuInput input{
+        .baseCandidates = {{"甲", 0}, {"乙", 1}, {"乙", 2}, {"丙", 3}},
+        .localCandidate = std::nullopt,
+        .aiSlot = AiSlot{AiSlotState::Loading, "AI 纠错中", std::nullopt},
+    };
+
+    const auto menu = OverlayMenu::compose(input);
+
+    expect(menu.size() == 4, "expected the original page capacity");
+    expectEntry(menu[0], OverlayEntryKind::Base, "甲", true, 0);
+    expectEntry(menu[1], OverlayEntryKind::Base, "乙", true, 1);
+    expectEntry(menu[2], OverlayEntryKind::AiSlot, "AI 纠错中", false, -1);
+    expectEntry(menu[3], OverlayEntryKind::Base, "乙", true, 2);
+}
+
 } // namespace
 
 int main() {
@@ -109,5 +125,6 @@ int main() {
     aiSuggestionOccupiesThirdPositionAndPromotesExistingBaseCandidate();
     duplicateAiSuggestionKeepsTheFirstTwoPositionsAndBecomesUnavailable();
     promotedLocalCandidateRetainsItsOriginalRimeSelectionTarget();
+    unrelatedDuplicateBaseCandidatesAreNotRemovedByTheAiSlot();
     return EXIT_SUCCESS;
 }
